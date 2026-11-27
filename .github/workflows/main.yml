@@ -1,0 +1,69 @@
+
+name: Build Sign Language macOS DMG
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build Gesture Print application
+        run: |
+          pyinstaller --noconfirm --clean --windowed \
+            --name GesturePrint \
+            --collect-all mediapipe \
+            Gesture_Print.py
+
+      - name: Build ISL Gesture application
+        run: |
+          pyinstaller --noconfirm --clean --windowed \
+            --name ISLGesturePrint \
+            --collect-all mediapipe \
+            isl_gesture_print.py
+
+      - name: Add camera permissions
+        run: |
+          for app in dist/GesturePrint.app dist/ISLGesturePrint.app; do
+            /usr/libexec/PlistBuddy \
+              -c "Add :NSCameraUsageDescription string 'Camera access is required for sign language detection.'" \
+              "$app/Contents/Info.plist" || true
+          done
+
+      - name: Create DMG
+        run: |
+          mkdir -p dist/DMG_Staging
+          cp -R dist/GesturePrint.app dist/DMG_Staging/
+          cp -R dist/ISLGesturePrint.app dist/DMG_Staging/
+
+          hdiutil create \
+            -volname "Sign Language Detection" \
+            -srcfolder dist/DMG_Staging \
+            -ov \
+            -format UDZO \
+            dist/Sign_Language.dmg
+
+      - name: Upload DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sign-Language-macOS-DMG
+          path: dist/Sign_Language.dmg
+          if-no-files-found: error
